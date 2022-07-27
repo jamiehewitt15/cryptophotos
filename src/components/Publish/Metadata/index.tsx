@@ -24,7 +24,7 @@ export default function MetadataFields(): ReactElement {
   const assetTypeOptions: BoxSelectionOption[] = [
     {
       name: assetTypeOptionsTitles[0].toLowerCase(),
-      title: assetTypeOptionsTitles[0],
+      title: 'Photo',
       checked: values.metadata.type === assetTypeOptionsTitles[0].toLowerCase(),
       icon: <IconDataset />
     },

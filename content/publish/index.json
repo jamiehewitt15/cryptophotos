@@ -1,6 +1,6 @@
 {
   "title": "Publish",
-  "description": "Highlight the important features of your data set or algorithm to make it more discoverable and catch the interest of data consumers.",
+  "description": "Describe the photo that you're selling. Include the location and equipment to make it more desirable. You can also provide a watermarked sample",
   "warning": "Publishing into a test network first is strongly recommended. Please familiarize yourself with [the market](https://oceanprotocol.com/technology/marketplaces), [the risks](https://blog.oceanprotocol.com/on-staking-on-data-in-ocean-market-3d8e09eb0a13), and the [Terms of Use](/terms).",
   "tooltipAvailableNetworks": "Assets are published to the network your wallet is connected to. These networks are currently supported:"
 }
