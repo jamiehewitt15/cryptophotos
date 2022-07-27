@@ -73,7 +73,7 @@ module.exports = {
   // Used to show or hide the fixed, dynamic or free price options
   // tab to publishers during the price creation.
   allowFixedPricing: process.env.NEXT_PUBLIC_ALLOW_FIXED_PRICING || 'true',
-  allowDynamicPricing: process.env.NEXT_PUBLIC_ALLOW_DYNAMIC_PRICING || 'true',
+  allowDynamicPricing: 'false', // process.env.NEXT_PUBLIC_ALLOW_DYNAMIC_PRICING || 'true',
   allowFreePricing: process.env.NEXT_PUBLIC_ALLOW_FREE_PRICING || 'true',
 
   // Set the default privacy policy to initially display
