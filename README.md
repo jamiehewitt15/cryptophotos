@@ -5,7 +5,7 @@
 [![Build Status](https://github.com/oceanprotocol/market/workflows/CI/badge.svg)](https://github.com/oceanprotocol/market/actions)
 [![Netlify Status](https://api.netlify.com/api/v1/badges/c85f4d8b-95e1-4010-95a4-2bacd8b90981/deploy-status)](https://app.netlify.com/sites/market-oceanprotocol/deploys)
 [![Maintainability](https://api.codeclimate.com/v1/badges/d114f94f75e6efd2ee71/maintainability)](https://codeclimate.com/repos/5e3933869a31771fd800011c/maintainability)
-[![Test Coverage](https://api.codeclimate.com/v1/badges/d114f94f75e6efd2ee71/test_coverage)](https://codeclimate.com/repos/5e3933869a31771fd800011c/test_coverage)
+[![Test Coverage](https://api.codeclimate.com/v1/badges/da71759866eb8313d7c2/test_coverage)](https://codeclimate.com/github/oceanprotocol/market/test_coverage)
 [![js oceanprotocol](https://img.shields.io/badge/js-oceanprotocol-7b1173.svg)](https://github.com/oceanprotocol/eslint-config-oceanprotocol)
 
 **Table of Contents**
@@ -19,13 +19,14 @@
   - [3Box](#3box)
   - [Purgatory](#purgatory)
   - [Network Metadata](#network-metadata)
+- [👩‍🎤 Storybook](#-storybook)
+- [🤖 Testing](#-testing)
 - [✨ Code Style](#-code-style)
 - [🛳 Production](#-production)
 - [⬆️ Deployment](#️-deployment)
 - [💖 Contributing](#-contributing)
 - [🍴 Forking](#-forking)
 - [💰 Pricing Options](#-pricing-options)
-  - [Dynamic Pricing](#dynamic-pricing)
   - [Fixed Pricing](#fixed-pricing)
   - [Free Pricing](#free-pricing)
 - [✅ GDPR Compliance](#-gdpr-compliance)
@@ -48,6 +49,8 @@ cd market
 nvm use
 
 npm install
+# in case of dependency errors, rather use:
+# npm install --legacy-peer-deps
 npm start
 ```
 
@@ -106,7 +109,7 @@ All displayed data in the app is presented around the concept of one data set, w
 - the actual data set files
 - the NFT which represents the data set
 - the datatokens representing access rights to the data set files
-- financial data connected to these datatokens, either a pool or a fixed rate exchange contract
+- financial data connected to these datatokens
 - calculations and conversions based on financial data
 - metadata about publisher accounts
 
@@ -177,10 +180,10 @@ The app has [Urql Client](https://formidable.com/open-source/urql/docs/basics/re
 import { gql, useQuery } from 'urql'
 
 const query = gql`
-  query PoolLiquidity($id: ID!, $shareId: ID) {
-    pool(id: $id) {
+  query TopSalesQuery {
+    users(first: 20, orderBy: totalSales, orderDirection: desc) {
       id
-      totalShares
+      totalSales
     }
   }
 `
@@ -276,18 +279,77 @@ export default function NetworkName(): ReactElement {
 }
 ```
 
+## 👩‍🎤 Storybook
+
+Storybook helps us build UI components in isolation from our app's business logic, data, and context. That makes it easy to develop hard-to-reach states and save these UI states as stories to revisit during development, testing, or QA.
+
+To start adding stories, create a `index.stories.tsx` inside the component's folder:
+
+<pre>
+src
+└─── components
+│   └─── @shared
+│       └─── <your component>
+│            │   index.tsx
+│            │   index.module.css
+│            │   <b>index.stories.tsx</b>
+│            │   index.test.tsx
+</pre>
+
+Starting up the Storybook server with this command will make it accessible under `http://localhost:6006`:
+
+```bash
+npm run storybook
+```
+
+If you want to build a portable static version under `storybook-static/`:
+
+```bash
+npm run storybook:build
+```
+
+## 🤖 Testing
+
+Test runs utilize [Jest](https://jestjs.io/) as test runner and [Testing Library](https://testing-library.com/docs/react-testing-library/intro) for writing tests.
+
+All created Storybook stories will automatically run as individual tests by using the [StoryShots Addon](https://storybook.js.org/addons/@storybook/addon-storyshots).
+
+Creating Storybook stories for a component will provide good coverage of a component in many cases. Additional tests for dedicated component functionality which can't be done with Storybook are created as usual [Testing Library](https://testing-library.com/docs/react-testing-library/intro) tests, but you can also [import exisiting Storybook stories](https://storybook.js.org/docs/react/writing-tests/importing-stories-in-tests#example-with-testing-library) into those tests.
+
+Executing linting, type checking, and full test run:
+
+```bash
+npm test
+```
+
+Which is a combination of multiple scripts which can also be run individually:
+
+```bash
+npm run lint
+npm run type-check
+npm run jest
+```
+
+A coverage report is automatically shown in console whenever `npm run jest` is called. Generated reports are sent to CodeClimate during CI runs.
+
+During local development you can continously get coverage report feedback in your console by running Jest in watch mode:
+
+```bash
+npm run jest:watch
+```
+
 ## ✨ Code Style
 
 Code style is automatically enforced through [ESLint](https://eslint.org) & [Prettier](https://prettier.io) rules:
 
 - Git pre-commit hook runs `prettier` on staged files, setup with [Husky](https://typicode.github.io/husky)
 - VS Code suggested extensions and settings for auto-formatting on file save
-- CI runs a linting & TypeScript typings check with `npm run lint`, and fails if errors are found
+- CI runs a linting & TypeScript typings check as part of `npm test`, and fails if errors are found
 
 For running linting and auto-formatting manually, you can use from the root of the project:
 
 ```bash
-# linting check, also runs Typescript typings check
+# linting check
 npm run lint
 
 # auto format all files in the project with prettier, taking all configs into account
@@ -300,6 +362,7 @@ To create a production build, run from the root of the project:
 
 ```bash
 npm run build
+
 # serve production build
 npm run serve
 ```
@@ -337,10 +400,6 @@ Additionally, we would also advise that your retain the text saying "Powered by 
 Everything else is made open according to the apache2 license. We look forward to seeing your data marketplace!
 
 ## 💰 Pricing Options
-
-### Dynamic Pricing
-
-To allow publishers to set pricing as "Dynamic" you need to add the following environmental variable to your .env file: `NEXT_PUBLIC_ALLOW_DYNAMIC_PRICING="true"` (default).
 
 ### Fixed Pricing
 

@@ -1,6 +1,5 @@
 import React, { ReactElement, useCallback, useEffect, useState } from 'react'
 import { OperationContext } from 'urql'
-import Tooltip from '@shared/atoms/Tooltip'
 import { fetchData, getSubgraphUri } from '@utils/subgraph'
 import useNetworkMetadata, {
   filterNetworksByType
@@ -8,19 +7,15 @@ import useNetworkMetadata, {
 import { LoggerInstance } from '@oceanprotocol/lib'
 import styles from './index.module.css'
 import { FooterStatsValues_globalStatistics as FooterStatsValuesGlobalStatistics } from 'src/@types/subgraph/FooterStatsValues'
-import MarketStatsTooltip from './Tooltip'
 import MarketStatsTotal from './Total'
 import { queryGlobalStatistics } from './_queries'
-import { usePrices } from '@context/Prices'
-import { useUserPreferences } from '@context/UserPreferences'
-import Decimal from 'decimal.js'
-import { StatsTotal, StatsValue } from './_types'
+import { StatsTotal } from './_types'
 import { useMarketMetadata } from '@context/MarketMetadata'
+import Tooltip from '@shared/atoms/Tooltip'
+import Markdown from '@shared/Markdown'
+import content from '../../../../content/footer.json'
 
 const initialTotal: StatsTotal = {
-  totalValueLockedInOcean: 0,
-  totalOceanLiquidity: 0,
-  pools: 0,
   nfts: 0,
   datatokens: 0,
   orders: 0
@@ -29,17 +24,10 @@ const initialTotal: StatsTotal = {
 export default function MarketStats(): ReactElement {
   const { appConfig } = useMarketMetadata()
   const { networksList } = useNetworkMetadata()
-  const { currency } = useUserPreferences()
-  const { prices } = usePrices()
-
   const [mainChainIds, setMainChainIds] = useState<number[]>()
   const [data, setData] = useState<{
     [chainId: number]: FooterStatsValuesGlobalStatistics
   }>()
-  const [totalValueLockedInOcean, setTotalValueLockedInOcean] =
-    useState<StatsValue>()
-  const [totalOceanLiquidity, setTotalOceanLiquidity] = useState<StatsValue>()
-  const [poolCount, setPoolCount] = useState<StatsValue>()
   const [total, setTotal] = useState(initialTotal)
 
   //
@@ -61,7 +49,9 @@ export default function MarketStats(): ReactElement {
   //
   const getMarketStats = useCallback(async () => {
     if (!mainChainIds?.length) return
-
+    const newData: {
+      [chainId: number]: FooterStatsValuesGlobalStatistics
+    } = {}
     for (const chainId of mainChainIds) {
       const context: OperationContext = {
         url: `${getSubgraphUri(
@@ -73,15 +63,12 @@ export default function MarketStats(): ReactElement {
       try {
         const response = await fetchData(queryGlobalStatistics, null, context)
         if (!response?.data?.globalStatistics) return
-
-        setData((prevState) => ({
-          ...prevState,
-          [chainId]: response.data.globalStatistics[0]
-        }))
+        newData[chainId] = response.data.globalStatistics[0]
       } catch (error) {
         LoggerInstance.error('Error fetching global stats: ', error.message)
       }
     }
+    setData(newData)
   }, [mainChainIds])
 
   //
@@ -96,45 +83,16 @@ export default function MarketStats(): ReactElement {
   //
   useEffect(() => {
     if (!data || !mainChainIds?.length) return
-
     const newTotal: StatsTotal = {
       ...initialTotal // always start calculating beginning from initial 0 values
     }
 
     for (const chainId of mainChainIds) {
-      const baseTokenValue = data[chainId]?.totalLiquidity[0]?.value
-
       try {
-        const totalValueLockedInOcean = baseTokenValue
-          ? new Decimal(baseTokenValue).mul(2)
-          : new Decimal(0)
-
-        setTotalValueLockedInOcean((prevState) => ({
-          ...prevState,
-          [chainId]: `${totalValueLockedInOcean}`
-        }))
-
-        const totalOceanLiquidity = Number(baseTokenValue) || 0
-
-        setTotalOceanLiquidity((prevState) => ({
-          ...prevState,
-          [chainId]: `${totalOceanLiquidity}`
-        }))
-
-        const poolCount = data[chainId]?.poolCount || 0
-
-        setPoolCount((prevState) => ({
-          ...prevState,
-          [chainId]: `${poolCount}`
-        }))
-
         const nftCount = data[chainId]?.nftCount || 0
         const datatokenCount = data[chainId]?.datatokenCount || 0
         const orderCount = data[chainId]?.orderCount || 0
 
-        newTotal.totalValueLockedInOcean += totalValueLockedInOcean.toNumber()
-        newTotal.totalOceanLiquidity += totalOceanLiquidity
-        newTotal.pools += poolCount
         newTotal.nfts += nftCount
         newTotal.datatokens += datatokenCount
         newTotal.orders += orderCount
@@ -144,7 +102,7 @@ export default function MarketStats(): ReactElement {
     }
 
     setTotal(newTotal)
-  }, [data, mainChainIds, prices, currency])
+  }, [data, mainChainIds])
 
   return (
     <div className={styles.stats}>
@@ -153,12 +111,7 @@ export default function MarketStats(): ReactElement {
         <Tooltip
           className={styles.info}
           content={
-            <MarketStatsTooltip
-              totalValueLockedInOcean={totalValueLockedInOcean}
-              poolCount={poolCount}
-              totalOceanLiquidity={totalOceanLiquidity}
-              mainChainIds={mainChainIds}
-            />
+            <Markdown className={styles.note} text={content.stats.note} />
           }
         />
       </>

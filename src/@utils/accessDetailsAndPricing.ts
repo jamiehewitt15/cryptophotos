@@ -8,15 +8,21 @@ import {
   TokensPriceQuery,
   TokensPriceQuery_tokens as TokensPrice
 } from '../@types/subgraph/TokensPriceQuery'
-import { Asset, LoggerInstance, ProviderInstance } from '@oceanprotocol/lib'
+import {
+  Asset,
+  LoggerInstance,
+  ProviderFees,
+  ProviderInstance
+} from '@oceanprotocol/lib'
 import { AssetExtended } from 'src/@types/AssetExtended'
 import { calcInGivenOut } from './pool'
 import { getFixedBuyPrice } from './fixedRateExchange'
 import { AccessDetails, OrderPriceAndFees } from 'src/@types/Price'
 import Decimal from 'decimal.js'
 import { consumeMarketOrderFee } from '../../app.config'
+import Web3 from 'web3'
 
-const TokensPriceQuery = gql`
+const tokensPriceQuery = gql`
   query TokensPriceQuery($datatokenIds: [ID!], $account: String) {
     tokens(where: { id_in: $datatokenIds }) {
       id
@@ -26,13 +32,20 @@ const TokensPriceQuery = gql`
       publishMarketFeeToken
       publishMarketFeeAmount
       orders(
-        where: { consumer: $account }
+        where: { payer: $account }
         orderBy: createdTimestamp
         orderDirection: desc
       ) {
         tx
         serviceIndex
         createdTimestamp
+        reuses(orderBy: createdTimestamp, orderDirection: desc) {
+          id
+          caller
+          createdTimestamp
+          tx
+          block
+        }
       }
       dispensers {
         id
@@ -81,7 +94,7 @@ const TokensPriceQuery = gql`
     }
   }
 `
-const TokenPriceQuery = gql`
+const tokenPriceQuery = gql`
   query TokenPriceQuery($datatokenId: ID!, $account: String) {
     token(id: $datatokenId) {
       id
@@ -91,13 +104,20 @@ const TokenPriceQuery = gql`
       publishMarketFeeToken
       publishMarketFeeAmount
       orders(
-        where: { consumer: $account }
+        where: { payer: $account }
         orderBy: createdTimestamp
         orderDirection: desc
       ) {
         tx
         serviceIndex
         createdTimestamp
+        reuses(orderBy: createdTimestamp, orderDirection: desc) {
+          id
+          caller
+          createdTimestamp
+          tx
+          block
+        }
       }
       dispensers {
         id
@@ -152,22 +172,22 @@ function getAccessDetailsFromTokenPrice(
   timeout?: number
 ): AccessDetails {
   const accessDetails = {} as AccessDetails
-  if (
-    tokenPrice &&
-    timeout &&
-    tokenPrice.orders &&
-    tokenPrice.orders.length > 0
-  ) {
+
+  if (tokenPrice?.orders?.length > 0) {
     const order = tokenPrice.orders[0]
-    accessDetails.isOwned = Date.now() / 1000 - order.createdTimestamp < timeout
-    accessDetails.validOrderTx = order.tx
+    const reusedOrder = order?.reuses?.length > 0 ? order.reuses[0] : null
+    // asset is owned if there is an order and asset has timeout 0 (forever) or if the condition is valid
+    accessDetails.isOwned =
+      timeout === 0 || Date.now() / 1000 - order?.createdTimestamp < timeout
+    // the last valid order should be the last reuse order tx id if there is one
+    accessDetails.validOrderTx = reusedOrder?.tx || order?.tx
   }
 
   // TODO: fetch order fee from sub query
-  accessDetails.publisherMarketOrderFee = tokenPrice.publishMarketFeeAmount
+  accessDetails.publisherMarketOrderFee = tokenPrice?.publishMarketFeeAmount
 
   // free is always the best price
-  if (tokenPrice.dispensers && tokenPrice.dispensers.length > 0) {
+  if (tokenPrice?.dispensers?.length > 0) {
     const dispenser = tokenPrice.dispensers[0]
     accessDetails.type = 'free'
     accessDetails.addressOrId = dispenser.token.id
@@ -182,10 +202,7 @@ function getAccessDetailsFromTokenPrice(
   }
 
   // checking for fixed price
-  if (
-    tokenPrice.fixedRateExchanges &&
-    tokenPrice.fixedRateExchanges.length > 0
-  ) {
+  if (tokenPrice?.fixedRateExchanges?.length > 0) {
     const fixed = tokenPrice.fixedRateExchanges[0]
     accessDetails.type = 'fixed'
     accessDetails.addressOrId = fixed.exchangeId
@@ -206,7 +223,7 @@ function getAccessDetailsFromTokenPrice(
   }
 
   // checking for pools
-  if (tokenPrice.pools && tokenPrice.pools.length > 0) {
+  if (tokenPrice?.pools?.length > 0) {
     const pool = tokenPrice.pools[0]
     accessDetails.type = 'dynamic'
     accessDetails.addressOrId = pool.id
@@ -230,14 +247,15 @@ function getAccessDetailsFromTokenPrice(
 }
 
 /**
- * This will be used to get price including feed before ordering
+ * This will be used to get price including fees before ordering
  * @param {AssetExtended} asset
  * @return {Promise<OrdePriceAndFee>}
  */
 export async function getOrderPriceAndFees(
   asset: AssetExtended,
-  accountId: string,
-  paramsForPool: CalcInGivenOutParams
+  accountId?: string,
+  paramsForPool?: CalcInGivenOutParams,
+  providerFees?: ProviderFees
 ): Promise<OrderPriceAndFees> {
   const orderPriceAndFee = {
     price: '0',
@@ -255,14 +273,17 @@ export async function getOrderPriceAndFees(
   } as OrderPriceAndFees
 
   // fetch provider fee
-  const initializeData = await ProviderInstance.initialize(
-    asset?.id,
-    asset.services[0].id,
-    0,
-    accountId,
-    asset?.services[0].serviceEndpoint
-  )
-  orderPriceAndFee.providerFee = initializeData.providerFee
+
+  const initializeData =
+    !providerFees &&
+    (await ProviderInstance.initialize(
+      asset?.id,
+      asset?.services[0].id,
+      0,
+      accountId,
+      asset?.services[0].serviceEndpoint
+    ))
+  orderPriceAndFee.providerFee = providerFees || initializeData.providerFee
 
   // fetch price and swap fees
   switch (asset?.accessDetails?.type) {
@@ -289,20 +310,18 @@ export async function getOrderPriceAndFees(
   }
 
   // calculate full price, we assume that all the values are in ocean, otherwise this will be incorrect
-  orderPriceAndFee.price = new Decimal(orderPriceAndFee.price)
-    .add(new Decimal(orderPriceAndFee.consumeMarketOrderFee))
-    .add(new Decimal(orderPriceAndFee.publisherMarketOrderFee))
-    .add(new Decimal(orderPriceAndFee.providerFee.providerFeeAmount))
+  orderPriceAndFee.price = new Decimal(+orderPriceAndFee.price || 0)
+    .add(new Decimal(+orderPriceAndFee?.consumeMarketOrderFee || 0))
+    .add(new Decimal(+orderPriceAndFee?.publisherMarketOrderFee || 0))
     .toString()
   return orderPriceAndFee
 }
 
 /**
- * @param {number} chain
+ * @param {number} chainId
  * @param {string} datatokenAddress
  * @param {number} timeout timout of the service, this is needed to return order details
  * @param {string} account account that wants to buy, is needed to return order details
- * @param {bool} includeOrderPriceAndFees if false price will be spot price (pool) and rate (fre), if true you will get the order price including fees !! fees not yet done
  * @returns {Promise<AccessDetails>}
  */
 export async function getAccessDetails(
@@ -317,7 +336,7 @@ export async function getAccessDetails(
       TokenPriceQuery,
       { datatokenId: string; account: string }
     > = await fetchData(
-      TokenPriceQuery,
+      tokenPriceQuery,
       {
         datatokenId: datatokenAddress.toLowerCase(),
         account: account?.toLowerCase()
@@ -360,7 +379,7 @@ export async function getAccessDetailsForAssets(
         TokensPriceQuery,
         { datatokenIds: [string]; account: string }
       > = await fetchData(
-        TokensPriceQuery,
+        tokensPriceQuery,
         {
           datatokenIds: chainAssetLists[chainKey],
           account: account?.toLowerCase()

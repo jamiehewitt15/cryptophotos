@@ -1,7 +1,7 @@
 import React, { ReactElement, useState, useEffect } from 'react'
 import Compute from './Compute'
 import Consume from './Download'
-import { FileMetadata, LoggerInstance, Datatoken } from '@oceanprotocol/lib'
+import { FileInfo, LoggerInstance, Datatoken } from '@oceanprotocol/lib'
 import Tabs, { TabsItem } from '@shared/atoms/Tabs'
 import { compareAsBN } from '@utils/numbers'
 import Pool from './Pool'
@@ -18,6 +18,7 @@ import { useFormikContext } from 'formik'
 import { FormPublishData } from 'src/components/Publish/_types'
 import { AssetExtended } from 'src/@types/AssetExtended'
 import PoolProvider from '@context/Pool'
+import AssetStats from './AssetStats'
 
 export default function AssetActions({
   asset
@@ -37,7 +38,7 @@ export default function AssetActions({
 
   const [isBalanceSufficient, setIsBalanceSufficient] = useState<boolean>()
   const [dtBalance, setDtBalance] = useState<string>()
-  const [fileMetadata, setFileMetadata] = useState<FileMetadata>()
+  const [fileMetadata, setFileMetadata] = useState<FileInfo>()
   const [fileIsLoading, setFileIsLoading] = useState<boolean>(false)
   const isCompute = Boolean(
     asset?.services.filter((service) => service.type === 'compute')[0]
@@ -111,31 +112,32 @@ export default function AssetActions({
     }
   }, [balance, accountId, asset?.accessDetails, dtBalance])
 
-  const UseContent = isCompute ? (
-    <Compute
-      ddo={asset}
-      accessDetails={asset?.accessDetails}
-      dtBalance={dtBalance}
-      file={fileMetadata}
-      fileIsLoading={fileIsLoading}
-    />
-  ) : (
-    <Consume
-      asset={asset}
-      dtBalance={dtBalance}
-      isBalanceSufficient={isBalanceSufficient}
-      file={fileMetadata}
-      fileIsLoading={fileIsLoading}
-    />
+  const UseContent = (
+    <>
+      {isCompute ? (
+        <Compute
+          asset={asset}
+          dtBalance={dtBalance}
+          file={fileMetadata}
+          fileIsLoading={fileIsLoading}
+        />
+      ) : (
+        <Consume
+          asset={asset}
+          dtBalance={dtBalance}
+          isBalanceSufficient={isBalanceSufficient}
+          file={fileMetadata}
+          fileIsLoading={fileIsLoading}
+        />
+      )}
+      <AssetStats />
+    </>
   )
 
   const tabs: TabsItem[] = [{ title: 'Use', content: UseContent }]
 
   asset?.accessDetails?.type === 'dynamic' &&
-    tabs.push(
-      { title: 'Pool', content: <Pool /> },
-      { title: 'Trade', content: <Trade /> }
-    )
+    tabs.push({ title: 'Pool', content: <Pool /> })
 
   return (
     <>
